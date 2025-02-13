@@ -12,6 +12,8 @@ openslide_lib = ctypes.CDLL('/share/apps/openslide-3.4.1/lib/libopenslide.so')
 #Load tbb for wsireg
 tbb_lib = ctypes.CDLL('/share/apps/onetbb-2021.1.1/lib64/libtbb.so.12')
 
+import datetime
+import argparse
 import openslide
 import pyvips
 import glob
@@ -21,13 +23,15 @@ import matplotlib.pyplot as plt
 from skimage import exposure
 import json
 
+DEBUG=True
+
 class Aligner:
-    def __init__(self, source_path, target_path, output_path, temp_path="./tmp"):
+    def __init__(self, source_path, target_path, output_path, experiment_name="Align", temp_path="./tmp"):
         self.source_path = source_path
         self.target_path = target_path
         self.output_path = output_path
         self.temp_path = temp_path
-        self.name = "AlignInitialFast"
+        self.name = experiment_name
         os.makedirs(output_path,exist_ok=True)
         os.makedirs(os.path.join(output_path,self.name),exist_ok=True)
 
@@ -39,11 +43,11 @@ class Aligner:
         import deeperhistreg
         from deeperhistreg.dhr_input_output.dhr_loaders.tiff_loader import TIFFLoader
         from deeperhistreg.dhr_input_output.dhr_loaders.openslide_loader import OpenSlideLoader
-        from deeperhistreg.dhr_pipeline.registration_params import default_initial_nonrigid, default_initial_fast,default_initial_nonrigid_high_resolution
+        from deeperhistreg.dhr_pipeline.registration_params import default_initial, default_initial_nonrigid, default_initial_fast,default_initial_nonrigid_high_resolution
         ##### INIT REGISTRATION #####
-
+        registration_params : dict = deeperhistreg.configs.default_initial()
         #registration_params : dict = deeperhistreg.configs.default_initial_nonrigid()
-        registration_params : dict = deeperhistreg.configs.default_initial_fast()
+        #registration_params : dict = deeperhistreg.configs.default_initial_fast()
         registration_params['loading_params']['source_resample_ratio']=1.0
         registration_params['loading_params']['target_resample_ratio']=1.0
         with open(os.path.join(self.temp_path,"params.json"), "w") as to_save:
@@ -66,8 +70,11 @@ class Aligner:
         config['delete_temporary_results'] = False
         config['temporary_path'] = self.temp_path
 
+
+        print(registration_params)
         ##### RUN REGISTRATION #####
 
+        print("last poinnt before calling deeperhistreg")
         deeperhistreg.run_registration(**config)
 
 
@@ -168,59 +175,96 @@ class Aligner:
 
 
 
+def align(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+          output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
+          #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
+          LEAPID="LEAP087",
+          SLIDEID="slide 37",
+          MAG="20x"
+          ):
+
+    ##### INITIALIZE ####
+
+    LEVEL_OME=0
+    LEVEL_NDPI=0
+    #input_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP' #/LEAP078.ome.tiff'
+    #output_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E' #/LEAP078.ome.tiff'
+    temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp' #/LEAP078.ome.tiff'
+    METHOD = 'deeperhistreg' ###'wsireg' #'deeperhistreg'
+    #MAG="20x"
+
+    #### READ FILES ####
+
+    ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
+    print(ome_tiff_files)
+    #ome_tiff_files = glob.glob(os.path.join(input_path,"OME","*tif*"))
+    target_path = [f for f in ome_tiff_files if LEAPID in f][0]
+    print(f"target: {target_path}")
 
 
-##### INITIALIZE ####
+    #ndpi_files = glob.glob(os.path.join(input_path,"WSI","*.ndpi"))
+    ndpi_files = glob.glob(os.path.join(input_path,"ConvertedH&Es","byLEAPID",f"{MAG}-tif","*.tif*"))
+    print(ndpi_files)
+    source_path = [f for f in ndpi_files if SLIDEID in f.lower()][0]
+    print(f"source: {source_path}")
 
-LEAPID="LEAP087"
-SLIDEID="slide 37"
-LEVEL_OME=0
-LEVEL_NDPI=0
-input_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP' #/LEAP078.ome.tiff'
-output_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E' #/LEAP078.ome.tiff'
-temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp' #/LEAP078.ome.tiff'
-METHOD = 'deeperhistreg' ###'wsireg' #'deeperhistreg'
-MAG="20x"
+    # Get IF img from OME-TIFF
+    #IF_img = tiff.imread(target_path)
+    #print("IF image shape:", IF_img.shape)
 
-#### READ FILES ####
+    # Get H&E from ndpi
 
-ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
-#ome_tiff_files = glob.glob(os.path.join(input_path,"OME","*tif*"))
-target_path = [f for f in ome_tiff_files if LEAPID in f][0]
-print(f"target: {target_path}")
+    #HE_slide = openslide.OpenSlide(source_path)
+    #HE_img = HE_slide.read_region((0, 0), LEVEL_NDPI, HE_slide.level_dimensions[LEVEL_NDPI])
+    #HE_img = HE_img.convert('RGB')
+    #print("H&E image shape:", HE_img.size)
 
 
-#ndpi_files = glob.glob(os.path.join(input_path,"WSI","*.ndpi"))
-ndpi_files = glob.glob(os.path.join(input_path,"ConvertedH&Es","byLEAPID",f"{MAG}-tif","*.tif*"))
-source_path = [f for f in ndpi_files if SLIDEID in f.lower()][0]
-print(f"source: {source_path}")
+    aligner = Aligner(source_path, target_path, output_path,f"Align_{LEAPID}-{SLIDEID}", temp_path)
 
-# Get IF img from OME-TIFF
-#IF_img = tiff.imread(target_path)
-#print("IF image shape:", IF_img.shape)
+    method_name = f"align_with_{METHOD}"
 
-# Get H&E from ndpi
-
-#HE_slide = openslide.OpenSlide(source_path)
-#HE_img = HE_slide.read_region((0, 0), LEVEL_NDPI, HE_slide.level_dimensions[LEVEL_NDPI])
-#HE_img = HE_img.convert('RGB')
-#print("H&E image shape:", HE_img.size)
+    if hasattr(aligner, method_name):
+        #call the method dynamically
+        getattr(aligner, method_name)()
+    else:
+        print(f"Method {method_name} not found.")
 
 
-aligner = Aligner(source_path, target_path, output_path, temp_path)
-
-method_name = f"align_with_{METHOD}"
-
-if hasattr(aligner, method_name):
-    #call the method dynamically
-    getattr(aligner, method_name)()
-else:
-    print(f"Method {method_name} not found.")
+    print("DONE")
 
 
-print("DONE")
 
 
+if __name__ == '__main__':
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument('-ip', '--input_path', required=True, help='path to input files')
+    ap.add_argument('-op', '--save_path', required=True, help='path to save output')
+    ap.add_argument('-tp', '--temp_path', help='path to store temporary files')
+    ap.add_argument('-lid', '--leap_id',default='LEAP087', help='LEAPID')
+    ap.add_argument('-sid', '--slide_id',default='slide 37', help='eg slide 37')
+    ap.add_argument('-mag', '--mag', default='10x', help='eg 10x or 20x')
+    args = ap.parse_args()
+
+    #get current date and time for model name
+    curr_date=str(datetime.date.today())
+    curr_time=datetime.datetime.now().strftime('%H%M')
+
+    #with open(args.config_file) as yaml_file:
+    #    config=yaml.load(yaml_file, Loader=yaml.FullLoader)
+
+    name=f"register_{curr_date}_{curr_time}"
+    if DEBUG: print(name)
+    #set up paths for models, training curves and predictions
+    save_path = os.path.join(args.save_path,name)
+    os.makedirs(save_path,exist_ok=True)
+
+    print(f"ip: {args.input_path}")
+    print(f"op: {save_path}")
+    print(f"{args.leap_id} {args.slide_id} {args.mag}")
+
+    align(args.input_path, save_path, args.leap_id, args.slide_id, args.mag)
 
 
 
