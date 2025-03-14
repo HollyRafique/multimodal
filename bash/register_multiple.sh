@@ -1,12 +1,15 @@
 #!/bin/bash
 
-#$ -l tmem=50G
+#$ -l tmem=70G
 #$ -l gpu=true
 #$ -pe gpu 1
 #$ -R y
 #$ -l h_rt=20:00:00
 #$ -j y
-#$ -N 'reg10x-LEAP005'
+#$ -N 'reg10x-2deg_clean_defaults'
+
+
+#  -l h="*thig*|*doglion*|*thog*"
 
 hostname
 # Capture the hostname in a variable
@@ -25,8 +28,10 @@ source /share/apps/source_files/python/python-3.11.9.source
 
 
 input_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP"
-output_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedHE"
+output_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedHnE"
+leapid="LEAP036"
+slideid="slide_17"
 
-python3 /home/hrafique/multimodal/src/register_images.py -ip $input_path -op $output_path -lid LEAP005 -sid slide_3 -mag 10x
+python3 /home/hrafique/multimodal/src/register_images.py -ip $input_path -op $output_path -m -mag 10x
 
 date

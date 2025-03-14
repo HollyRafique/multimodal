@@ -22,16 +22,47 @@ import tifffile as tiff
 import matplotlib.pyplot as plt
 from skimage import exposure
 import json
+import re
+import torch
 
 DEBUG=True
 
+
+
+def extract_all_ids(filename):
+    # Find all LEAP occurrences
+    leap_pattern = r'LEAP\d+'
+    leap_ids = re.findall(leap_pattern, filename, re.IGNORECASE)  # Returns a list of all matches
+
+    # Extract Slide ID (first occurrence)
+    slide_pattern = r'Slide[-_\s]?(\d+)'
+    slide_match = re.search(slide_pattern, filename, re.IGNORECASE)
+
+    slide_id = f"slide_{slide_match.group(1)}" if slide_match else None
+
+    return leap_ids, slide_id
+
+def extract_ids(filename):
+    # This regex finds "LEAP" followed by digits, then later "Slide" (with an optional hyphen, underscore, or space) and digits.
+    pattern = r'(LEAP\d+).*?Slide[-_\s]?(\d+)'
+    match = re.search(pattern, filename, re.IGNORECASE)
+    if match:
+        leap_id = match.group(1)
+        slide_id = match.group(2)
+        slide_id = f"slide_{slide_id}"
+        return leap_id, slide_id
+    else:
+        return None, None
+
+
 class Aligner:
-    def __init__(self, source_path, target_path, output_path, experiment_name="Align", temp_path="./tmp"):
+    def __init__(self, source_path, target_path, output_path, experiment_name="Align", temp_path="./tmp", nonrigid=False):
         self.source_path = source_path
         self.target_path = target_path
         self.output_path = output_path
         self.temp_path = temp_path
         self.name = experiment_name
+        self.nonrigid = nonrigid
         os.makedirs(output_path,exist_ok=True)
         os.makedirs(os.path.join(output_path,self.name),exist_ok=True)
 
@@ -45,18 +76,32 @@ class Aligner:
         from deeperhistreg.dhr_input_output.dhr_loaders.openslide_loader import OpenSlideLoader
         from deeperhistreg.dhr_pipeline.registration_params import default_initial, default_initial_nonrigid, default_initial_fast,default_initial_nonrigid_high_resolution
         ##### INIT REGISTRATION #####
-        registration_params : dict = deeperhistreg.configs.default_initial()
-        #registration_params : dict = deeperhistreg.configs.default_initial_nonrigid()
-        #registration_params : dict = deeperhistreg.configs.default_initial_fast()
-        registration_params['loading_params']['source_resample_ratio']=1.0
-        registration_params['loading_params']['target_resample_ratio']=1.0
-        with open(os.path.join(self.temp_path,"params.json"), "w") as to_save:
+
+        if self.nonrigid:
+            registration_params : dict = deeperhistreg.configs.default_initial_nonrigid()
+        else:
+            registration_params : dict = deeperhistreg.configs.default_initial()
+
+
+        registration_params['loading_params']['source_resample_ratio']=0.5
+        registration_params['loading_params']['target_resample_ratio']=0.5
+        registration_params['logging_path']=self.output_path
+        registration_params['echo']=True
+        registration_params['initial_registration_params']['echo']=True
+        registration_params['initial_registration_params']['run_superpoint_ransac']=True
+        registration_params['initial_registration_params']['angle_step']=2
+        registration_params['initial_registration_params']['registration_size'] = 2048
+        #registration_params['initial_registration_params']['registration_sizes'] = [100,200,300,400,500,750,1000,1250]
+
+
+        with open(os.path.join(self.output_path,"reg_params.json"), "w") as to_save:
             json.dump(registration_params, to_save)
         # want to add date and time for the case_name
 
         #import json
         #with open("D:/04 MultiomicDatasets/LEAP/params.json", "w") as to_save:
         #    json.dump(registration_params, to_save)
+
 
         ## Create Config 
         config = dict()
@@ -66,16 +111,17 @@ class Aligner:
         config['registration_parameters'] = registration_params
         config['case_name'] = self.name
         config['save_displacement_field'] = True
-        config['copy_target'] = True
+        config['copy_target'] = False
         config['delete_temporary_results'] = False
         config['temporary_path'] = self.temp_path
 
 
-        print(registration_params)
+        #print(registration_params)
         ##### RUN REGISTRATION #####
 
-        print("last poinnt before calling deeperhistreg")
+        print("calling deeperhistreg")
         deeperhistreg.run_registration(**config)
+        #deeperhistreg.run_registration(**config).pipeline.initial_transform
 
 
         ##### APPLY DEFORMATION
@@ -175,12 +221,20 @@ class Aligner:
 
 
 
-def align(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
-          output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
+#def align(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+#          output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
+#          #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
+#          LEAPID="LEAP087",
+#          SLIDEID="slide 37",
+#          MAG="20x"
+#          ):
+def align(source_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+          target_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+          save_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
           #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
           LEAPID="LEAP087",
           SLIDEID="slide 37",
-          MAG="20x"
+          MAG="20x", NONRIGID=False
           ):
 
     ##### INITIALIZE ####
@@ -193,6 +247,73 @@ def align(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
     METHOD = 'deeperhistreg' ###'wsireg' #'deeperhistreg'
     #MAG="20x"
 
+
+    save_path = os.path.join(save_path,f"Align_{LEAPID}-{SLIDEID}")
+    os.makedirs(save_path,exist_ok=True)
+
+    aligner = Aligner(source_path, target_path, save_path,f"{LEAPID}_{SLIDEID}", temp_path, NONRIGID)
+
+    method_name = f"align_with_{METHOD}"
+
+    if hasattr(aligner, method_name):
+        #call the method dynamically
+        getattr(aligner, method_name)()
+    else:
+        print(f"Method {method_name} not found.")
+
+    torch.cuda.empty_cache()
+
+    print("DONE")
+
+
+def align_multiple(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+          output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
+          #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
+          MAG="20x", nonrigid=False
+          ):
+    print("ALIGN MULTIPLE")
+    #### READ FILES ####
+
+    ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
+    #print(ome_tiff_files)
+    #ome_tiff_files = glob.glob(os.path.join(input_path,"OME","*tif*"))
+    #target_path = [f for f in ome_tiff_files if LEAPID in f][0]
+    #print(f"target: {target_path}")
+
+    for target_path in ome_tiff_files:
+
+        ndpi_files = glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*"))
+        print(ndpi_files)
+
+        all_LEAPIDS, SLIDEID = extract_all_ids(target_path)
+
+        for LEAPID in all_LEAPIDS:
+            print(f"{LEAPID} and {SLIDEID}")
+            ndpi_paths = [f for f in ndpi_files if SLIDEID.lower() in f.lower()]
+            print(ndpi_paths)
+            ndpi_paths = [f for f in ndpi_files if LEAPID.lower() in f.lower()]
+            print(ndpi_paths)
+
+            if not ndpi_paths:
+                print(f"no file for {SLIDEID}")
+                continue
+
+            source_path = ndpi_paths[0]
+
+            print(f"source: {source_path}")
+        
+
+            align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid)
+
+
+def align_single(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
+          output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
+          #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
+          LEAPID="LEAP087",
+          SLIDEID="slide_37",
+          MAG="20x", nonrigid=False
+          ):
+    print("ALIGN SIGNLE")
     #### READ FILES ####
 
     ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
@@ -203,37 +324,15 @@ def align(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
 
 
     #ndpi_files = glob.glob(os.path.join(input_path,"WSI","*.ndpi"))
-    ndpi_files = glob.glob(os.path.join(input_path,"ConvertedH&Es","byLEAPID",f"{MAG}-tif","*.tif*"))
+    ndpi_files = glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*"))
     print(ndpi_files)
-    source_path = [f for f in ndpi_files if SLIDEID in f.lower()][0]
+    
+    ndpi_files = [f for f in ndpi_files if SLIDEID in f.lower()]
+    print(ndpi_files)
+    source_path = [f for f in ndpi_files if LEAPID in f][0] 
     print(f"source: {source_path}")
 
-    # Get IF img from OME-TIFF
-    #IF_img = tiff.imread(target_path)
-    #print("IF image shape:", IF_img.shape)
-
-    # Get H&E from ndpi
-
-    #HE_slide = openslide.OpenSlide(source_path)
-    #HE_img = HE_slide.read_region((0, 0), LEVEL_NDPI, HE_slide.level_dimensions[LEVEL_NDPI])
-    #HE_img = HE_img.convert('RGB')
-    #print("H&E image shape:", HE_img.size)
-
-
-    aligner = Aligner(source_path, target_path, output_path,f"Align_{LEAPID}-{SLIDEID}", temp_path)
-
-    method_name = f"align_with_{METHOD}"
-
-    if hasattr(aligner, method_name):
-        #call the method dynamically
-        getattr(aligner, method_name)()
-    else:
-        print(f"Method {method_name} not found.")
-
-
-    print("DONE")
-
-
+    align(source_path, target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid)
 
 
 if __name__ == '__main__':
@@ -245,6 +344,10 @@ if __name__ == '__main__':
     ap.add_argument('-lid', '--leap_id',default='LEAP087', help='LEAPID')
     ap.add_argument('-sid', '--slide_id',default='slide 37', help='eg slide 37')
     ap.add_argument('-mag', '--mag', default='10x', help='eg 10x or 20x')
+    ap.add_argument('-m', '--multiple', action='store_true')
+    ap.add_argument('-nr', '--nonrigid', action='store_true')
+
+
     args = ap.parse_args()
 
     #get current date and time for model name
@@ -264,7 +367,13 @@ if __name__ == '__main__':
     print(f"op: {save_path}")
     print(f"{args.leap_id} {args.slide_id} {args.mag}")
 
-    align(args.input_path, save_path, args.leap_id, args.slide_id, args.mag)
+    multiple=False
+    if args.multiple:
+        align_multiple(args.input_path, save_path, args.mag, args.nonrigid)
+    else:
+        align_single(args.input_path, save_path, args.leap_id, args.slide_id, args.mag, args.nonrigid)
+
+
 
 
 
