@@ -12,6 +12,7 @@ openslide_lib = ctypes.CDLL('/share/apps/openslide-3.4.1/lib/libopenslide.so')
 #Load tbb for wsireg
 tbb_lib = ctypes.CDLL('/share/apps/onetbb-2021.1.1/lib64/libtbb.so.12')
 
+import yaml
 import datetime
 import argparse
 import openslide
@@ -24,9 +25,27 @@ from skimage import exposure
 import json
 import re
 import torch
+from LEAPdata import get_slide_id, get_leap_ids
 
 DEBUG=True
 
+# Function to recursively update the dictionary
+def update_dict_in_place(original, updates):
+    for key, value in updates.items():
+        if isinstance(value, dict) and key in original:
+            update_dict_in_place(original[key], value)  # Recursively update nested dictionaries
+        else:
+            original[key] = value  # Update/overwrite values
+
+# Function to return a new dictionary with updates applied
+def update_dict(original, updates):
+    new_dict = original.copy()  # Create a shallow copy to preserve the original structure
+    for key, value in updates.items():
+        if isinstance(value, dict) and key in original:
+            new_dict[key] = update_dict(original[key], value)  # Recursively update nested dictionaries
+        else:
+            new_dict[key] = value  # Update/overwrite values
+    return new_dict
 
 
 def extract_all_ids(filename):
@@ -56,13 +75,14 @@ def extract_ids(filename):
 
 
 class Aligner:
-    def __init__(self, source_path, target_path, output_path, experiment_name="Align", temp_path="./tmp", nonrigid=False):
+    def __init__(self, source_path, target_path, output_path, experiment_name="Align", temp_path="./tmp", nonrigid=False, config=None):
         self.source_path = source_path
         self.target_path = target_path
         self.output_path = output_path
         self.temp_path = temp_path
         self.name = experiment_name
         self.nonrigid = nonrigid
+        self.config = config
         os.makedirs(output_path,exist_ok=True)
         os.makedirs(os.path.join(output_path,self.name),exist_ok=True)
 
@@ -83,15 +103,21 @@ class Aligner:
             registration_params : dict = deeperhistreg.configs.default_initial()
 
 
+        if self.config:
+            print('using config file')
+            registration_params = update_dict(registration_params, self.config)
+       
         registration_params['loading_params']['source_resample_ratio']=0.5
         registration_params['loading_params']['target_resample_ratio']=0.5
         registration_params['logging_path']=self.output_path
-        registration_params['echo']=True
-        registration_params['initial_registration_params']['echo']=True
-        registration_params['initial_registration_params']['run_superpoint_ransac']=True
-        registration_params['initial_registration_params']['angle_step']=2
-        registration_params['initial_registration_params']['registration_size'] = 2048
-        #registration_params['initial_registration_params']['registration_sizes'] = [100,200,300,400,500,750,1000,1250]
+
+        ## These params should be set in a config file
+        #registration_params['echo']=True
+        #registration_params['initial_registration_params']['echo']=True
+        #registration_params['initial_registration_params']['run_superpoint_ransac']=True
+        #registration_params['initial_registration_params']['angle_step']=2
+        #registration_params['initial_registration_params']['registration_size'] = 2048
+        #registration_params['initial_registration_params']['registration_sizes'] = [50,100,550,600,650,700,750,800,850,900,1000,1250]
 
 
         with open(os.path.join(self.output_path,"reg_params.json"), "w") as to_save:
@@ -234,7 +260,7 @@ def align(source_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
           #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
           LEAPID="LEAP087",
           SLIDEID="slide 37",
-          MAG="20x", NONRIGID=False
+          MAG="20x", NONRIGID=False, config=None
           ):
 
     ##### INITIALIZE ####
@@ -250,8 +276,8 @@ def align(source_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
 
     save_path = os.path.join(save_path,f"Align_{LEAPID}-{SLIDEID}")
     os.makedirs(save_path,exist_ok=True)
-
-    aligner = Aligner(source_path, target_path, save_path,f"{LEAPID}_{SLIDEID}", temp_path, NONRIGID)
+    print(f"config: {config}")
+    aligner = Aligner(source_path, target_path, save_path,f"{LEAPID}_{SLIDEID}", temp_path, NONRIGID, config)
 
     method_name = f"align_with_{METHOD}"
 
@@ -269,9 +295,10 @@ def align(source_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
 def align_multiple(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
           output_path= '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedH&E',
           #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
-          MAG="20x", nonrigid=False
+          MAG="10x", nonrigid=False, config=None
           ):
     print("ALIGN MULTIPLE")
+    print(f"config: {config}")
     #### READ FILES ####
 
     ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
@@ -290,9 +317,9 @@ def align_multiple(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/dat
         for LEAPID in all_LEAPIDS:
             print(f"{LEAPID} and {SLIDEID}")
             ndpi_paths = [f for f in ndpi_files if SLIDEID.lower() in f.lower()]
-            print(ndpi_paths)
+            #print(ndpi_paths)
             ndpi_paths = [f for f in ndpi_files if LEAPID.lower() in f.lower()]
-            print(ndpi_paths)
+            #print(ndpi_paths)
 
             if not ndpi_paths:
                 print(f"no file for {SLIDEID}")
@@ -303,7 +330,7 @@ def align_multiple(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/dat
             print(f"source: {source_path}")
         
 
-            align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid)
+            align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid,config)
 
 
 def align_single(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
@@ -311,28 +338,29 @@ def align_single(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/
           #temp_path = '/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/tmp',
           LEAPID="LEAP087",
           SLIDEID="slide_37",
-          MAG="20x", nonrigid=False
+          MAG="10x", nonrigid=False, config=None
           ):
-    print("ALIGN SIGNLE")
+    print("ALIGN SINGLE")
     #### READ FILES ####
-
+    print(f"LEAPID: {LEAPID}")
+    print(f"SLIDEID: {SLIDEID}")
     ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
     print(ome_tiff_files)
     #ome_tiff_files = glob.glob(os.path.join(input_path,"OME","*tif*"))
     target_path = [f for f in ome_tiff_files if LEAPID in f][0]
-    print(f"target: {target_path}")
+    print(f"\ntarget: {target_path}")
 
 
     #ndpi_files = glob.glob(os.path.join(input_path,"WSI","*.ndpi"))
     ndpi_files = glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*"))
     print(ndpi_files)
     
-    ndpi_files = [f for f in ndpi_files if SLIDEID in f.lower()]
+    ndpi_files = [f for f in ndpi_files if SLIDEID.lower() in f.lower()]
     print(ndpi_files)
-    source_path = [f for f in ndpi_files if LEAPID in f][0] 
-    print(f"source: {source_path}")
+    source_path = [f for f in ndpi_files if LEAPID.lower() in f.lower()][0] 
+    print(f"\nsource: {source_path}")
 
-    align(source_path, target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid)
+    align(source_path, target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid, config)
 
 
 if __name__ == '__main__':
@@ -341,11 +369,12 @@ if __name__ == '__main__':
     ap.add_argument('-ip', '--input_path', required=True, help='path to input files')
     ap.add_argument('-op', '--save_path', required=True, help='path to save output')
     ap.add_argument('-tp', '--temp_path', help='path to store temporary files')
-    ap.add_argument('-lid', '--leap_id',default='LEAP087', help='LEAPID')
-    ap.add_argument('-sid', '--slide_id',default='slide 37', help='eg slide 37')
+    ap.add_argument('-lid', '--leap_id', help='LEAPID')
+    ap.add_argument('-sid', '--slide_id', help='eg slide 37')
     ap.add_argument('-mag', '--mag', default='10x', help='eg 10x or 20x')
     ap.add_argument('-m', '--multiple', action='store_true')
     ap.add_argument('-nr', '--nonrigid', action='store_true')
+    ap.add_argument('-cp', '--config_path', help='full path to config file')
 
 
     args = ap.parse_args()
@@ -363,15 +392,34 @@ if __name__ == '__main__':
     save_path = os.path.join(args.save_path,name)
     os.makedirs(save_path,exist_ok=True)
 
+    # READ CONFIG
+    if args.config_path:
+        with open(args.config_path, "r") as file:
+            config = yaml.safe_load(file)
+    else:
+        config = None
+
+
+
     print(f"ip: {args.input_path}")
     print(f"op: {save_path}")
-    print(f"{args.leap_id} {args.slide_id} {args.mag}")
+    print(f"mag: {args.mag}")
+    print(f"config: {config}")
 
     multiple=False
     if args.multiple:
-        align_multiple(args.input_path, save_path, args.mag, args.nonrigid)
+        align_multiple(args.input_path, save_path, args.mag, args.nonrigid, config)
     else:
-        align_single(args.input_path, save_path, args.leap_id, args.slide_id, args.mag, args.nonrigid)
+
+        # If slide ID provided then use it, otherwise look it up
+        if args.slide_id:
+            slide_id = args.slide_id
+        else:
+            slide_id = get_slide_id(args.leap_id)
+
+
+        print(f"{args.leap_id} {slide_id}")
+        align_single(args.input_path, save_path, args.leap_id, slide_id, args.mag, args.nonrigid, config)
 
 
 

@@ -4,9 +4,9 @@
 #$ -l gpu=true
 #$ -pe gpu 1
 #$ -R y
-#$ -l h_rt=20:00:00
+#$ -l h_rt=23:00:00
 #$ -j y
-#$ -N 'reg10x-2deg_clean_defaults'
+#$ -N 'reg10x-testds'
 
 
 #  -l h="*thig*|*doglion*|*thog*"
@@ -29,9 +29,9 @@ source /share/apps/source_files/python/python-3.11.9.source
 
 input_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP"
 output_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/AlignedHnE"
-leapid="LEAP036"
-slideid="slide_17"
+config_path="/home/hrafique/multimodal/config/reg_params.yaml"
 
-python3 /home/hrafique/multimodal/src/register_images.py -ip $input_path -op $output_path -m -mag 10x
+
+python3 /home/hrafique/multimodal/src/register_images.py -ip $input_path -op $output_path -m -mag 10x -cp $config_path
 
 date

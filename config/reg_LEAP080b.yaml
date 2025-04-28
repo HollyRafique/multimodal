@@ -1,0 +1,10 @@
+loading_params:
+    source_resample_ratio: 0.5
+    target_resample_ratio: 0.5
+echo: True
+initial_registration_params:
+    echo: True
+    run_superpoint_ransac: True
+    angle_step: 2
+    registration_size: 2048
+    registration_sizes: [50, 100, 550, 600, 650, 700, 750, 800, 850, 900, 1000, 1250]
