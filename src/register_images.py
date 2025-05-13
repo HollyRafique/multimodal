@@ -61,6 +61,7 @@ def extract_all_ids(filename):
 
     return leap_ids, slide_id
 
+
 def extract_ids(filename):
     # This regex finds "LEAP" followed by digits, then later "Slide" (with an optional hyphen, underscore, or space) and digits.
     pattern = r'(LEAP\d+).*?Slide[-_\s]?(\d+)'
@@ -70,8 +71,20 @@ def extract_ids(filename):
         slide_id = match.group(2)
         slide_id = f"slide_{slide_id}"
         return leap_id, slide_id
+    
+    ## if no match then try the WSI format
+
+    pattern = r'(SLIDE_\d+)_(LEAP\d+)'
+    match = re.search(pattern, filename, re.IGNORECASE)
+    if match:
+        leap_id = match.group(2)
+        #leap_id = f"LEAP{slide_id}"
+        slide_id = match.group(1)
+        #slide_id = f"slide_{slide_id}"
+        return leap_id, slide_id
     else:
         return None, None
+
 
 
 class Aligner:
@@ -301,36 +314,43 @@ def align_multiple(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/dat
     print(f"config: {config}")
     #### READ FILES ####
 
-    ome_tiff_files = glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*"))
-    #print(ome_tiff_files)
-    #ome_tiff_files = glob.glob(os.path.join(input_path,"OME","*tif*"))
-    #target_path = [f for f in ome_tiff_files if LEAPID in f][0]
-    #print(f"target: {target_path}")
+    ome_tiff_files = sorted(glob.glob(os.path.join(input_path,"ConvertedTIFFs",MAG,"*tif*")))
+    ndpi_files = sorted(glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*")))
 
-    for target_path in ome_tiff_files:
+    for source_path in ndpi_files:
 
-        ndpi_files = glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*"))
-        print(ndpi_files)
-
-        all_LEAPIDS, SLIDEID = extract_all_ids(target_path)
-
-        for LEAPID in all_LEAPIDS:
-            print(f"{LEAPID} and {SLIDEID}")
-            ndpi_paths = [f for f in ndpi_files if SLIDEID.lower() in f.lower()]
-            #print(ndpi_paths)
-            ndpi_paths = [f for f in ndpi_files if LEAPID.lower() in f.lower()]
-            #print(ndpi_paths)
-
-            if not ndpi_paths:
-                print(f"no file for {SLIDEID}")
-                continue
-
-            source_path = ndpi_paths[0]
-
-            print(f"source: {source_path}")
+        LEAPID, SLIDEID = extract_ids(source_path)
+        print(f"{LEAPID} and {SLIDEID}")
         
+        target_path = [f for f in ome_tiff_files if LEAPID.lower() in f.lower()]
 
-            align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid,config)
+        if target_path:
+            target_path = target_path[0]
+        else:
+            print(f"no file for {LEAPID}")
+            continue
+
+        print(f"source: {source_path}")
+        print(f"target: {target_path}")
+            
+        align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid,config)
+
+
+    ##OLD METHOD
+    ##for target_path in ome_tiff_files:
+    ##    ndpi_files = glob.glob(os.path.join(input_path,"ConvertedHnEs","byLEAPID",f"{MAG}-tif","*.tif*"))
+    ##    print(ndpi_files)
+    ##    all_LEAPIDS, SLIDEID = extract_all_ids(target_path)
+    ##    for LEAPID in all_LEAPIDS:
+    ##        print(f"{LEAPID} and {SLIDEID}")
+    ##        ndpi_paths = [f for f in ndpi_files if SLIDEID.lower() in f.lower()]
+    ##        ndpi_paths = [f for f in ndpi_files if LEAPID.lower() in f.lower()]
+    ##        if not ndpi_paths:
+    ##            print(f"no file for {SLIDEID}")
+    ##            continue
+    ##        source_path = ndpi_paths[0]
+    ##        print(f"source: {source_path}")
+    ##        align(source_path,target_path, output_path, LEAPID, SLIDEID, MAG, nonrigid,config)
 
 
 def align_single(input_path='/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP',
