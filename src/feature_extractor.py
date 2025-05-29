@@ -12,7 +12,6 @@ import torchvision.transforms as transforms
 from transformers import AutoImageProcessor, ViTModel
 #from macenko import macenko_normalizer
 #from vision_transformer import VisionTransformer    
-from ctran import ctranspath
 import torch.nn as nn
 from PIL import Image
 
@@ -232,44 +231,7 @@ def extractFeaturesUsingResNet50(patch, layer_ind=0):
     return feature_vector.squeeze().detach().numpy()
 
 
-def extractFeatureVectorUsingCTransPath(patch):
-    # mean = (0.485, 0.456, 0.406)
-    # std = (0.229, 0.224, 0.225)
-    # trnsfrms_val = transforms.Compose(
-    #     [
-    #         transforms.Resize(224),
-    #         transforms.ToTensor(),
-    #         transforms.Normalize(mean = mean, std = std)
-    #     ]
-    # )
 
-    return None
-
-def extractFeaturesUsingCTransPath(patches):
-    model = ctranspath()
-    model.head = nn.Identity()
-
-    #### Load pretrained weights
-    td = torch.load(r'../models/ctranspath.pth')
-    pretrained_dict = td['model']
-    model_dict = model.state_dict()
-    # Filter out unnecessary keys from pretrained_dict
-    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict and v.shape == model_dict[k].shape}
-    # Overwrite entries in the existing state dict
-    model_dict.update(pretrained_dict) 
-    # Load the new state dict
-    model.load_state_dict(model_dict)
-
-    transformed_images = transformImages(patches, model)
-
-    # Stack the transformed images into a batch
-    image_batch = torch.cat(transformed_images, dim=0) 
-    model.eval()
-
-    with torch.inference_mode():
-        features = model(image_batch)
-
-    return features.detach().cpu().numpy()
 
 
 
