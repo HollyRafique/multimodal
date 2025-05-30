@@ -22,11 +22,11 @@ export PATH=/home/hrafique/.local/bin:$PATH
 source /share/apps/source_files/python/python-3.11.9.source
 
 input_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/features"
-truth_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/truthlabels/gene_panel_cd45.csv"
+truth_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/truthlabels"
 output_path="/SAN/colcc/WSI_LymphNodes_BreastCancer/HollyR/data/LEAP/output"
 
 
-python3 /home/hrafique/multimodal/src/predict_sge.py -ip $input_path -tp $truth_path -op $output_path -ff 'uni-CD45+_features.csv' -s 'CD45+'
+python3 /home/hrafique/multimodal/src/predict_sge.py -ip $input_path -tp $truth_path -op $output_path -tf 'gene_panel_cd45.csv' -ff 'uni-CD45+_features.csv' -s 'CD45+'
 
 
 date
