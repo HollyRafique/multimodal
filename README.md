@@ -77,6 +77,8 @@ Wang C, Chan AS, Fu X,et al. Benchmarking the translational potential of spatial
 
 
 ![T-SNE to demonstrate biological validity](poster/tsneVirchow.png)
+![Measured vs Predicted Expression in Immune Segments](poster/scatter-immune.png)
+![Measured vs Predicted Expression in Tumour Segmentsy](poster/scatter-tumour.png)
 
 
 ---
