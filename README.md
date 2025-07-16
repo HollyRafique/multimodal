@@ -13,7 +13,6 @@ Spatial transcriptomics enables high-resolution mapping of gene expression withi
 
 Focusing on **triple-negative breast cancer (TNBC)**, a highly heterogeneous and aggressive subtype, we demonstrate that spatial gene expression can be recovered with **clinically relevant accuracy** using only routine histology.
 
----
 
 ---
 
